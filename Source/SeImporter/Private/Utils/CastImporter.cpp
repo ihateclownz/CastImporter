@@ -253,10 +253,11 @@ void FCastImporter::AnalysisMaterial(FString ParentPath, FString MaterialPath, F
 					for (int32 LineIndex = 1; LineIndex < TextureContent.Num(); ++LineIndex)
 					{
 						if (FCastTextureInfo CodTexture;
-							AnalysisTexture(CodTexture,
+							AnalysisTexture(Material,
+							CodTexture,
 								ParentPath,
 								TextureContent[LineIndex],
-								FPaths::Combine(TexturePath, Material.Name),
+								TexturePath,
 								TextureFormat))
 						{
 							Material.Textures.Add(CodTexture);
@@ -288,88 +289,24 @@ void FCastImporter::AnalysisMaterial(FString ParentPath, FString MaterialPath, F
 	}
 }
 
-bool FCastImporter::AnalysisTexture(FCastTextureInfo& Texture, FString ParentPath, FString TextureLineText,
-                                    FString TexturePath, const FString& ImageFormat)
+bool FCastImporter::AnalysisTexture(FCastMaterialInfo& Material, FCastTextureInfo& Texture, FString ParentPath, FString TextureLineText, FString TexturePath, const FString& ImageFormat)
 {
-	//if (ImportOptions->MaterialType == CastMT_IW9)
-	//{
-	//	TArray<FString> LineParts;
-	//	TextureLineText.ParseIntoArray(LineParts, TEXT(","), false);
-	//	FString TextureAddress = LineParts[0];
-	//	FString TextureName = LineParts[1];
-	//	Texture.TexturePath = FPaths::Combine(TexturePath, TextureName + "." + ImageFormat);
-	//	Texture.TextureName = TextureName;
-	//	Texture.TextureType = TEXT("Normal");
-
-	//	if (TextureName[0] == '$' || !FPaths::FileExists(Texture.TexturePath))
-	//	{
-	//		return false;
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x0" || TextureAddress == "unk_semantic_0x55")
-	//	{
-	//		Texture.TextureType = "Albedo";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, true);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x4" || TextureAddress == "unk_semantic_0x56")
-	//	{
-	//		Texture.TextureType = "NOG";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, false);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x8")
-	//	{
-	//		Texture.TextureType = "Emission";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, true);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0xC")
-	//	{
-	//		Texture.TextureType = "Alpha";
-	//		Texture.TextureType = "Alpha";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, false);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x22")
-	//	{
-	//		Texture.TextureType = "Transparency";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, true);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x26")
-	//	{
-	//		// TODO：SSS材质
-	//		Texture.TextureType = "Specular_Mask";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, false);
-	//	}
-	//	if (TextureAddress == "unk_semantic_0x32")
-	//	{
-	//		Texture.TextureType = "Mask";
-	//		return ImportTexture(Texture, Texture.TexturePath, ParentPath, true);
-	//	}
-	//}
-	//else if (ImportOptions->MaterialType == CastMT_IW8)
-	//{
-	//	TArray<FString> LineParts;
-	//	TextureLineText.ParseIntoArray(LineParts, TEXT(","), false);
-	//	FString TextureName = LineParts[1];
-	//	Texture.TexturePath = FPaths::Combine(TexturePath, TextureName + "." + ImageFormat);
-	//	Texture.TextureName = TextureName;
-	//	Texture.TextureType = LineParts[0];
-
-	//	return ImportTexture(Texture, Texture.TexturePath, ParentPath, false);
-	//}
-	//else if (ImportOptions->MaterialType == CastMT_T7)
-	//{
-	//	TArray<FString> LineParts;
-	//	TextureLineText.ParseIntoArray(LineParts, TEXT(","), false);
-	//	FString TextureName = LineParts[1];
-	//	Texture.TexturePath = FPaths::Combine(TexturePath, TextureName + "." + ImageFormat);
-	//	Texture.TextureName = TextureName;
-	//	Texture.TextureType = LineParts[0];
-
-	//	return ImportTexture(Texture, Texture.TexturePath, ParentPath, true);
-	//}
-	//return false;
 	TArray<FString> LineParts;
 	TextureLineText.ParseIntoArray(LineParts, TEXT(","), false);
 	FString TextureName = LineParts[1];
-	Texture.TexturePath = FPaths::Combine(TexturePath, TextureName + "." + ImageFormat);
+
+	// Check if texture is directly in '/_images' path first
+	FString DiskTexturePath = FPaths::Combine(TexturePath, TextureName + "." + ImageFormat);
+	if (!FPaths::FileExists(DiskTexturePath))
+	{
+		// If not then we check '/_images/material'
+		DiskTexturePath = FPaths::Combine(TexturePath, Material.Name, TextureName + "." + ImageFormat);
+		if (!FPaths::FileExists(DiskTexturePath))
+			// If neither exist, return false
+			return false;
+	}
+	
+	Texture.TexturePath = DiskTexturePath;
 	Texture.TextureName = TextureName;
 	Texture.TextureType = LineParts[0];
 
@@ -643,6 +580,43 @@ UMaterialInterface* FCastImporter::CreateMaterialInstance(const FCastMaterialInf
 			// }
 		}
 		MaterialPath = FPaths::Combine("/SeImporter/Shading/IW/IW9", "IW9_" + MaterialType);
+	}
+	if (ImportOptions->MaterialType == CastMT_T9)
+	{
+		for (const auto Texture : Material.Textures)
+		{
+			// Check if Glass
+			if (Texture.TextureType == TEXT("unk_semantic_0xBA68F89F")) // most likely transmissionMap or something similar
+			{
+				MaterialType = TEXT("Glass");
+			}
+			// Check if Skin
+			else if (Texture.TextureType == TEXT("thicknessMap"))
+			{
+				MaterialType = TEXT("Skin");
+			}
+			// Check if Hair
+			else if (Material.Name.Contains("_hair"))
+			{
+				MaterialType = TEXT("Hair");
+			}
+			// Check if Eye
+			else if (Material.TechSet == TEXT("xtechset_44063b0f3568300"))
+			{
+				MaterialType = TEXT("Eye");
+			}
+			// Check if Multidetail
+			else if (Texture.TextureType == TEXT("detailNormalMask"))
+			{
+				MaterialType = TEXT("Multidetail");
+			}
+			// Check if Alpha
+			else if (Texture.TextureType == TEXT("alphaMap"))
+			{
+				MaterialType = TEXT("Alpha");
+			}
+		}
+		MaterialPath = FPaths::Combine("/SeImporter/Shading/3ARC/T9", "T9_" + MaterialType);
 	}
 	if (ImportOptions->MaterialType == CastMT_T10)
 	{

@@ -91,8 +91,7 @@ public:
 	bool ImportFromFile(FString Filename);
 	void AnalysisMaterial(FString ParentPath, FString MaterialPath, FString TexturePath,
 	                      FString TextureFormat);
-	bool AnalysisTexture(FCastTextureInfo& Texture, FString ParentPath, FString TextureLineText, FString TexturePath,
-	                     const FString& ImageFormat);
+	bool AnalysisTexture(FCastMaterialInfo& Material, FCastTextureInfo& Texture, FString ParentPath, FString TextureLineText, FString TexturePath, const FString& ImageFormat);
 
 	bool AnalysisSetting(FCastSettingInfo& Setting, FString SettingLineText);
 
